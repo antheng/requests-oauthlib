@@ -427,8 +427,7 @@ class OAuth2Session(requests.Session):
          token_endpoint,
          client_id=None,
          client_secret=None,
-         interval=None,
-         max_poll_attempts=None
+         interval=None
     ):
         """
         Prompts request for device code token at `token_endpoint`. Used by
@@ -444,14 +443,10 @@ class OAuth2Session(requests.Session):
                               requests.
         :param interval: Time in seconds between device code polls. By default
                          will use the interval returned by the first request.
-        :param max_poll_attempts: Number of attempts to check for approval. By
-                            default will be infinite.
         :return: Token dict
         """
-
         if client_id is None:
             client_id = self.client_id
-
         device_code_response = self.request(
             "GET",
             token_endpoint,
@@ -472,10 +467,11 @@ class OAuth2Session(requests.Session):
             raise e
 
         device_data = device_code_response.json()
-
         device_code = device_data["device_code"]
         user_code = device_data["user_code"]
         verification_uri = device_data["verification_uri"]
+        expires_in = device_data["expires_in"]
+        start_time = time.time()
         log.debug("Device code response data: %s", device_data)
         print(f"Go to: {verification_uri}")
         print(f"Enter code: {user_code}")
@@ -486,9 +482,9 @@ class OAuth2Session(requests.Session):
             interval = device_data.get("interval", 5)
         attempts = 0
         while token is None:
-            if max_poll_attempts is not None and attempts >= max_poll_attempts:
+            if time.time() - start_time > expires_in:
                 raise TimeoutError(
-                    f"Device code was not authorized within {max_poll_attempts} attempts."
+                    "Device code expired"
                 )
             attempts += 1
             time.sleep(interval)
@@ -512,7 +508,6 @@ class OAuth2Session(requests.Session):
                     print(f"Polling too fast, trying again in {interval}s")
                 else:
                     raise e
-
         return token
 
     def refresh_token(
