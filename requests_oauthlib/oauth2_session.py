@@ -469,8 +469,8 @@ class OAuth2Session(requests.Session):
 
         token = None
         if interval is None:
-            # Fallback to 15s if no interval given anywhere
-            interval = device_data.get("interval", 15)
+            # RFC8628 specifies that clients MUST use 5 as the default
+            interval = device_data.get("interval", 5)
         attempts = 0
         while token is None:
             if max_attempts is not None and attempts >= max_attempts:
