@@ -420,6 +420,90 @@ class OAuth2Session(requests.Session):
         self.token = self._client.token
         return self.token
 
+    async def token_from_device_code(self, token_endpoint, client_id=None, client_secret=None, interval=None, max_attempts=None):
+        """
+        Prompts request for device code token at `token_endpoint`. Used by
+        DeviceCodeClient. Will continuously loop and check the device code
+
+        :param token_endpoint: endpoint for retrieving the token code
+        :param interval: Time between attempts to check for approval. By default
+                         will use the interval returned by the first request.
+        :param max_attempts: Number of attempts to check for approval. By
+                            default will be infinite.
+        :return: Token dict
+        """
+
+        if client_id is None:
+            client_id = self._client.client_id
+        log.debug("Client ID: %s", client_id)
+
+
+        device_code_response = self.request(
+            "GET",
+            token_endpoint,
+            client_id=client_id,
+            client_secret=client_secret,
+        )
+        log.debug("Request body sent:%s", device_code_response.request.body)
+        try:
+            device_code_response.raise_for_status()
+        except HTTPError as e:
+            log.debug("Failed to authorize:")
+            log.debug("Device code response status: %s", device_code_response.status_code)
+            log.debug("Device code response content: %s", device_code_response.text)
+            raise e
+
+        device_data = device_code_response.json()
+
+        device_code = device_data["device_code"]
+        user_code = device_data["user_code"]
+        verification_uri = device_data["verification_uri"]
+        log.debug("Device code response data: %s", device_data)
+        print(f"Go to: {verification_uri}")
+        print(f"Enter code: {user_code}")
+
+        access_token = None
+        poll_interval = interval or device_data.get("interval", 15)
+        attempts = 0
+        while access_token is None:
+            if max_attempts is not None and attempts >= max_attempts:
+                raise TimeoutError(
+                    "Device code was not authorized within %d attempts."
+                    % max_attempts
+                )
+            attempts += 1
+            time.sleep(poll_interval)
+
+            try:
+                log.debug("Polling token endpoint %s for device code.", token_endpoint)
+                token = self.fetch_token(
+                    token_endpoint,
+                    method="GET",
+                    device_code=device_code,
+                    include_client_id=True,
+                    scope=self.scope,
+                    data={
+                        "code": device_code,
+                        "device_code": device_code,
+                    }
+                )
+                print(token)
+                print("token response:", token)
+                access_token = token["access_token"]
+                print("Access token obtained:", access_token)
+            except CustomOAuth2Error as e:
+                if "authorization_pending" in str(e):
+                    print(e.description)
+                    continue
+                elif "slow_down" in str(e):
+                    print(f"We're too fast, trying again in {poll_interval}s")
+                    continue
+                else:
+                    raise e
+
+        log.debug("Device code authorized, obtained token %s.", token)
+        return token
+
     def refresh_token(
         self,
         token_url,
