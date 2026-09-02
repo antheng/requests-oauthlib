@@ -432,11 +432,17 @@ class OAuth2Session(requests.Session):
     ):
         """
         Prompts request for device code token at `token_endpoint`. Used by
-        DeviceCodeClient. Will continuously loop and check the device code
-        until the number of attempts are met or the access token is given.
+        DeviceCodeClient. Will continuously loop and poll `token_endpoint` to
+        check if the device code until the number of attempts are met or the
+        access token is given.
 
         :param token_endpoint: Endpoint for retrieving the token code
-        :param interval: Time between attempts to check for approval. By default
+        :param client_id: Client id to be used for token retrieval.  If not
+                          given, the client id of this session is used.
+        :param client_secret: The `client_secret` paired with `client_id`. If
+                              the value is `None`, it will be omitted from the
+                              requests.
+        :param interval: Time in seconds between device code polls. By default
                          will use the interval returned by the first request.
         :param max_poll_attempts: Number of attempts to check for approval. By
                             default will be infinite.
