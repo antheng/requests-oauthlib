@@ -434,9 +434,7 @@ class OAuth2Session(requests.Session):
         """
 
         if client_id is None:
-            client_id = self._client.client_id
-        log.debug("Client ID: %s", client_id)
-
+            client_id = self.client_id
 
         device_code_response = self.request(
             "GET",
@@ -444,7 +442,11 @@ class OAuth2Session(requests.Session):
             client_id=client_id,
             client_secret=client_secret,
         )
-        log.debug("Request body sent:%s", device_code_response.request.body)
+        log.debug(
+            "Request questing device code from %s with client id %s",
+            token_endpoint,
+            client_id
+        )
         try:
             device_code_response.raise_for_status()
         except HTTPError as e:
@@ -462,17 +464,19 @@ class OAuth2Session(requests.Session):
         print(f"Go to: {verification_uri}")
         print(f"Enter code: {user_code}")
 
-        access_token = None
-        poll_interval = interval or device_data.get("interval", 15)
+        token = None
+        if interval is None:
+            # Fallback to 15s if no interval given anywhere
+            interval = device_data.get("interval", 15)
         attempts = 0
-        while access_token is None:
+        while token is None:
             if max_attempts is not None and attempts >= max_attempts:
                 raise TimeoutError(
                     "Device code was not authorized within %d attempts."
                     % max_attempts
                 )
             attempts += 1
-            time.sleep(poll_interval)
+            time.sleep(interval)
 
             try:
                 log.debug("Polling token endpoint %s for device code.", token_endpoint)
@@ -487,21 +491,17 @@ class OAuth2Session(requests.Session):
                         "device_code": device_code,
                     }
                 )
-                print(token)
-                print("token response:", token)
-                access_token = token["access_token"]
-                print("Access token obtained:", access_token)
             except CustomOAuth2Error as e:
                 if "authorization_pending" in str(e):
                     print(e.description)
                     continue
                 elif "slow_down" in str(e):
-                    print(f"We're too fast, trying again in {poll_interval}s")
+                    interval+=5
+                    print(f"Polling too fast, trying again in {interval}s")
                     continue
                 else:
                     raise e
 
-        log.debug("Device code authorized, obtained token %s.", token)
         return token
 
     def refresh_token(
