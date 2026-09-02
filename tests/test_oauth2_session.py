@@ -58,6 +58,8 @@ class OAuth2SessionTest(TestCase):
             self.client_BackendApplication,
         ]
         self.all_clients = self.clients + [self.client_MobileApplication]
+        self.token_endpoint = "https://example.com/token"
+
 
     def test_add_token(self):
         token = "Bearer " + self.token["access_token"]
@@ -220,7 +222,7 @@ class OAuth2SessionTest(TestCase):
 
     @mock.patch("time.time", new=lambda: fake_time)
     def test_fetch_token(self):
-        url = "https://example.com/token"
+        url = self.token_endpoint
 
         for client in self.clients:
             sess = OAuth2Session(client=client, token=self.token)
@@ -405,7 +407,7 @@ class OAuth2SessionTest(TestCase):
         now = time.time()
         self.token["expires_at"] = past
         new_token["expires_at"] = now + 3600
-        url = "https://example.com/token"
+        url = self.token_endpoint
 
         with mock.patch("time.time", lambda: now):
             for client in self.clients:
@@ -502,7 +504,7 @@ class OAuth2SessionTest(TestCase):
 
             return fake_send
 
-        url = "https://example.com/token"
+        url = self.token_endpoint
 
         for client in self.clients:
             sess = OAuth2Session(client=client)
