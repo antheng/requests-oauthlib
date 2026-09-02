@@ -4,9 +4,9 @@ from oauthlib.common import generate_token, urldecode
 from oauthlib.oauth2 import WebApplicationClient, InsecureTransportError
 from oauthlib.oauth2 import LegacyApplicationClient
 from oauthlib.oauth2 import TokenExpiredError, is_secure_transport
-import requests
 from oauthlib.oauth2.rfc6749.errors import CustomOAuth2Error
-from requests import HTTPError
+
+import requests
 
 log = logging.getLogger(__name__)
 
@@ -460,7 +460,7 @@ class OAuth2Session(requests.Session):
         )
         try:
             device_code_response.raise_for_status()
-        except HTTPError as e:
+        except requests.exceptions.HTTPError as e:
             log.debug("Failed to authorize:")
             log.debug("Device code response status: %s", device_code_response.status_code)
             log.debug("Device code response content: %s", device_code_response.text)

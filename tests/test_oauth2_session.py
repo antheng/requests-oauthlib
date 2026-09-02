@@ -19,7 +19,6 @@ from oauthlib.oauth2 import DeviceClient
 from oauthlib.oauth2.rfc6749.errors import CustomOAuth2Error
 from requests_oauthlib import OAuth2Session, TokenUpdated
 import requests
-from requests import HTTPError
 
 from requests.auth import _basic_auth_str
 
@@ -676,11 +675,11 @@ class OAuth2SessionTest(TestCase):
     def test_device_code_http_error_raised(self):
         sess = OAuth2Session(client=DeviceClient(self.client_id))
         sess.request = mock.Mock(
-            side_effect=HTTPError("Something Bad")
+            side_effect=requests.HTTPError("Something Bad")
         )
         with mock.patch("requests_oauthlib.oauth2_session.time.sleep"):
             self.assertRaises(
-                HTTPError, asyncio.run, sess.token_from_device_code(self.token_endpoint)
+                requests.HTTPError, asyncio.run, sess.token_from_device_code(self.token_endpoint)
             )
 
 
