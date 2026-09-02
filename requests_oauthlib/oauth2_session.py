@@ -422,7 +422,14 @@ class OAuth2Session(requests.Session):
         self.token = self._client.token
         return self.token
 
-    async def token_from_device_code(self, token_endpoint, client_id=None, client_secret=None, interval=None, max_attempts=None):
+    async def token_from_device_code(
+         self,
+         token_endpoint,
+         client_id=None,
+         client_secret=None,
+         interval=None,
+         max_poll_attempts=None
+    ):
         """
         Prompts request for device code token at `token_endpoint`. Used by
         DeviceCodeClient. Will continuously loop and check the device code
@@ -431,7 +438,7 @@ class OAuth2Session(requests.Session):
         :param token_endpoint: Endpoint for retrieving the token code
         :param interval: Time between attempts to check for approval. By default
                          will use the interval returned by the first request.
-        :param max_attempts: Number of attempts to check for approval. By
+        :param max_poll_attempts: Number of attempts to check for approval. By
                             default will be infinite.
         :return: Token dict
         """
@@ -473,9 +480,9 @@ class OAuth2Session(requests.Session):
             interval = device_data.get("interval", 5)
         attempts = 0
         while token is None:
-            if max_attempts is not None and attempts >= max_attempts:
+            if max_poll_attempts is not None and attempts >= max_poll_attempts:
                 raise TimeoutError(
-                    f"Device code was not authorized within {max_attempts} attempts."
+                    f"Device code was not authorized within {max_poll_attempts} attempts."
                 )
             attempts += 1
             time.sleep(interval)
@@ -487,20 +494,16 @@ class OAuth2Session(requests.Session):
                     method="GET",
                     device_code=device_code,
                     include_client_id=True,
+                    client_id=client_id,
+                    client_secret=client_secret,
                     scope=self.scope,
-                    data={
-                        "code": device_code,
-                        "device_code": device_code,
-                    }
                 )
             except CustomOAuth2Error as e:
                 if "authorization_pending" in str(e):
                     print(e.description)
-                    continue
                 elif "slow_down" in str(e):
                     interval+=5
                     print(f"Polling too fast, trying again in {interval}s")
-                    continue
                 else:
                     raise e
 
