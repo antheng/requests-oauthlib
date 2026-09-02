@@ -5,6 +5,8 @@ from oauthlib.oauth2 import WebApplicationClient, InsecureTransportError
 from oauthlib.oauth2 import LegacyApplicationClient
 from oauthlib.oauth2 import TokenExpiredError, is_secure_transport
 import requests
+from oauthlib.oauth2.rfc6749.errors import CustomOAuth2Error
+from requests import HTTPError
 
 log = logging.getLogger(__name__)
 
@@ -424,8 +426,9 @@ class OAuth2Session(requests.Session):
         """
         Prompts request for device code token at `token_endpoint`. Used by
         DeviceCodeClient. Will continuously loop and check the device code
+        until the number of attempts are met or the access token is given.
 
-        :param token_endpoint: endpoint for retrieving the token code
+        :param token_endpoint: Endpoint for retrieving the token code
         :param interval: Time between attempts to check for approval. By default
                          will use the interval returned by the first request.
         :param max_attempts: Number of attempts to check for approval. By
@@ -472,8 +475,7 @@ class OAuth2Session(requests.Session):
         while token is None:
             if max_attempts is not None and attempts >= max_attempts:
                 raise TimeoutError(
-                    "Device code was not authorized within %d attempts."
-                    % max_attempts
+                    f"Device code was not authorized within {max_attempts} attempts."
                 )
             attempts += 1
             time.sleep(interval)
