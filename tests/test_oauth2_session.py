@@ -602,7 +602,8 @@ class OAuth2SessionTest(TestCase):
                 self.token,
             ]
         )
-        sess.request = mock.Mock(return_value=fake_device_code_response(15))
+        # Interval will default to 5
+        sess.request = mock.Mock(return_value=fake_device_code_response())
         with mock.patch("requests_oauthlib.oauth2_session.time.sleep") as mock_sleep:
             result = asyncio.run(sess.token_from_device_code(self.token_endpoint))
             self.assertEqual(result, self.token)
@@ -618,7 +619,8 @@ class OAuth2SessionTest(TestCase):
                 self.token,
             ]
         )
-        sess.request = mock.Mock(return_value=fake_device_code_response(15))
+        # Interval will default to 5
+        sess.request = mock.Mock(return_value=fake_device_code_response())
         with mock.patch("requests_oauthlib.oauth2_session.time.sleep") as mock_sleep:
             result = asyncio.run(sess.token_from_device_code(self.token_endpoint))
             self.assertEqual(result, self.token)
