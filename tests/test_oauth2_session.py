@@ -36,11 +36,12 @@ def fake_token(token):
 
     return fake_send
 
-def fake_device_code_response(interval=None):
+def fake_device_code_response(interval=None, expiry=300):
     device_code_data = {
             "device_code": "devicecode123",
             "user_code": "USER-CODE",
             "verification_uri": "https://example.com/verify",
+            "expires_in": expiry,
         }
     if interval is not None:
         device_code_data["interval"] = interval
@@ -48,14 +49,7 @@ def fake_device_code_response(interval=None):
     device_code_resp = requests.Response()
     device_code_resp.status_code = 200
     device_code_resp.headers["Content-Type"] = "application/json"
-    device_code_resp._content = json.dumps(
-        {
-            "device_code": "devicecode123",
-            "user_code": "USER-CODE",
-            "verification_uri": "https://example.com/verify",
-            "interval": 5,
-        }
-    ).encode("utf-8")
+    device_code_resp._content = json.dumps(device_code_data).encode("utf-8")
     return device_code_resp
 
 class OAuth2SessionTest(TestCase):
@@ -646,22 +640,18 @@ class OAuth2SessionTest(TestCase):
         self.assertEqual(ctx.exception.error, "other")
         sess.fetch_token.assert_called_once()
 
-    def test_device_code_max_poll_attempts_raises_timeout_error(self):
+    def test_device_code_expiry_error(self):
         sess = OAuth2Session(client=DeviceClient(self.client_id))
-        sess.fetch_token = mock.Mock(
-            side_effect=CustomOAuth2Error(
-                error="authorization_pending", description="still waiting"
-            )
-        )
-        sess.request = mock.Mock(return_value=fake_device_code_response(15))
+        sess.fetch_token = mock.Mock(return_value=self.token)
+        # Expiry 0 to force timeout
+        mock_device_code_resp = fake_device_code_response(15, expiry=0)
+        sess.request = mock.Mock(return_value=mock_device_code_resp)
         with mock.patch("requests_oauthlib.oauth2_session.time.sleep"):
             self.assertRaises(
                 TimeoutError,
                 asyncio.run,
-                sess.token_from_device_code(self.token_endpoint, max_poll_attempts=2),
+                sess.token_from_device_code(self.token_endpoint),
             )
-        self.assertEqual(sess.fetch_token.call_count, 2)
-
 
     def test_device_code_explicit_interval(self):
         sess = OAuth2Session(client=DeviceClient(self.client_id))
