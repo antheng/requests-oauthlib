@@ -1,9 +1,11 @@
+import asyncio
 import logging
 import time
 from collections.abc import Collection
 
 from oauthlib.common import generate_token, urldecode
-from oauthlib.oauth2 import WebApplicationClient, InsecureTransportError
+from oauthlib.oauth2 import WebApplicationClient, InsecureTransportError, MobileApplicationClient, \
+    BackendApplicationClient, ServiceApplicationClient, DeviceClient
 from oauthlib.oauth2 import LegacyApplicationClient
 from oauthlib.oauth2 import TokenExpiredError, is_secure_transport
 from oauthlib.oauth2.rfc6749.errors import CustomOAuth2Error
@@ -613,6 +615,13 @@ class OAuth2Session(requests.Session):
                              obtain a new token before retrying the request
                              once. Set to False to return the 401 response
                              as-is.
+        :param perform_dynamic_registration: If True (default), the session is allowed
+                                     to register itself at the registration
+                                     endpoint advertised by the discovered
+                                     authorization server, when new client
+                                     credentials are required during the 401
+                                     recovery flow. `perform_auth` must also
+                                     be True otherwise this does nothing.
         """
         if not is_secure_transport(url):
             raise InsecureTransportError()
@@ -779,6 +788,44 @@ class OAuth2Session(requests.Session):
                 )
                 return response
 
+            if perform_dynamic_registration:
+                if registration_endpoint is None:
+                    log.debug(
+                        "Dynamic registration is enabled but no registration "
+                        "endpoint was discovered, returning the original 401 "
+                        "response."
+                    )
+                    return response
+
+                log.debug(
+                    "Performing dynamic client registration at %s.",
+                    registration_endpoint,
+                )
+                try:
+                    client_id, client_secret = self.get_dynamic_client_credentials(
+                        registration_endpoint,
+                        client_name=self.dynamic_client_name,
+                    )
+                except requests.exceptions.RequestException as e:
+                    log.debug(
+                        "Dynamic client registration at %s failed (%s), "
+                        "returning the original 401 response.",
+                        registration_endpoint,
+                        e,
+                    )
+                    return response
+                except (ValueError, KeyError) as e:
+                    # Includes json.JSONDecodeError and missing `client_id`
+                    log.debug(
+                        "Dynamic client registration response from %s was "
+                        "invalid (%s), returning the original 401 response.",
+                        registration_endpoint,
+                        e,
+                    )
+                    return response
+
+                log.debug("Dynamically registered client_id %s.", client_id)
+                self.client_id = client_id
 
             authorization_url, state = self.authorization_url(token_endpoint)
 
