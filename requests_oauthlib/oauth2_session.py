@@ -1,4 +1,5 @@
 import logging
+import time
 
 from oauthlib.common import generate_token, urldecode
 from oauthlib.oauth2 import WebApplicationClient, InsecureTransportError
@@ -593,6 +594,7 @@ class OAuth2Session(requests.Session):
         self,
         method,
         url,
+        perform_auth=True,
         data=None,
         headers=None,
         withhold_token=False,
@@ -601,7 +603,15 @@ class OAuth2Session(requests.Session):
         files=None,
         **kwargs
     ):
-        """Intercept all requests and add the OAuth 2 token if present."""
+        """
+        
+        :param perform_auth: If True (default) and the resource responds with a
+                             401, the session will follow the RFC9728 protected
+                             resource metadata discovery flow and attempt to
+                             obtain a new token before retrying the request
+                             once. Set to False to return the 401 response
+                             as-is.
+        """
         if not is_secure_transport(url):
             raise InsecureTransportError()
         if self.token and not withhold_token:
@@ -653,9 +663,222 @@ class OAuth2Session(requests.Session):
         log.debug("Requesting url %s using method %s.", url, method)
         log.debug("Supplying headers %s and data %s", headers, data)
         log.debug("Passing through key word arguments %s.", kwargs)
-        return super(OAuth2Session, self).request(
+        response = super(OAuth2Session, self).request(
             method, url, headers=headers, data=data, files=files, **kwargs
         )
+
+        if response.status_code == 401 and perform_auth:
+            # Unauthorized with current auth. Attempt token refresh following RFC9728
+            if "WWW-Authenticate" not in response.headers:
+                log.debug(
+                    "Received 401 from %s but no WWW-Authenticate header was "
+                    "provided, unable to discover resource metadata.",
+                    url,
+                )
+                return response
+
+            rs_metadata_uri = self._parse_resource_metadata_uri(response)
+            if rs_metadata_uri is None:
+                log.debug(
+                    "No resource_metadata advertised in the WWW-Authenticate "
+                    "header of the 401 response from %s.",
+                    url,
+                )
+                return response
+
+            log.debug("Fetching resource metadata from %s", rs_metadata_uri)
+            try:
+                rs_metadata_resp = super(OAuth2Session, self).request(
+                    "GET", rs_metadata_uri
+                )
+                rs_metadata_resp.raise_for_status()
+                rs_metadata = rs_metadata_resp.json()
+            except requests.exceptions.RequestException as e:
+                log.debug(
+                    "Could not retrieve resource metadata from %s (%s).",
+                    rs_metadata_uri,
+                    e,
+                )
+                return response
+            except ValueError as e:
+                # Includes json.JSONDecodeError for non-JSON/malformed bodies
+                log.debug(
+                    "Resource metadata at %s is not valid JSON (%s).",
+                    rs_metadata_uri,
+                    e,
+                )
+                return response
+
+            log.debug("Resource metadata: %s", rs_metadata)
+            # Get the first resource metadata
+            as_servers = rs_metadata.get("authorization_servers")
+            if as_servers is None:
+                log.debug(
+                    "No authorization servers advertised in resource server metadata"
+                    " skipping dynamic registration"
+                )
+                return response
+
+            registration_endpoint = None
+            token_endpoint = None
+            for as_base in as_servers: # Try each authorization server
+                try:
+                    as_metadata_uri = f"{as_base}/.well-known/openid-configuration"
+                    log.debug(
+                        "Fetching authorization server metadata from %s", as_metadata_uri
+                    )
+                    as_metadata_resp = super(OAuth2Session, self).request(
+                        "GET", as_metadata_uri,
+                    )
+                    as_metadata_resp.raise_for_status()
+                    as_metadata = as_metadata_resp.json()
+
+                    if "token_endpoint" not in as_metadata or "registration_endpoint" not in as_metadata:
+                        log.debug(
+                            "Authorization server metadata at %s does not advertise "
+                            "both a token_endpoint and a registration_endpoint, "
+                            "trying next authorization server.",
+                            as_metadata_uri,
+                        )
+                        continue
+                    else:
+                        registration_endpoint = as_metadata["registration_endpoint"]
+                        token_endpoint = as_metadata["token_endpoint"]
+                        break
+                except requests.exceptions.HTTPError as e:
+                    log.debug(
+                        "Authorization server %s returned %s for its metadata "
+                        "document, trying next authorization server.",
+                        as_base,
+                        e.response.status_code if e.response is not None else "error",
+                    )
+                    continue
+                except requests.exceptions.RequestException as e:
+                    log.debug(
+                        "Could not reach authorization server metadata at %s (%s), "
+                        "trying next authorization server.",
+                        as_metadata_uri,
+                        e,
+                    )
+                    continue
+                except ValueError as e:
+                    # Includes json.JSONDecodeError for non-JSON/malformed bodies
+                    log.debug(
+                        "Authorization server metadata at %s is not valid JSON (%s), "
+                        "trying next authorization server.",
+                        as_metadata_uri,
+                        e,
+                    )
+                    continue
+            if token_endpoint is None:
+                log.debug(
+                    "No authorization server advertised usable metadata, "
+                    "skipping dynamic registration."
+                )
+                return response
+
+            if perform_dynamic_registration:
+                if registration_endpoint is None:
+                    log.debug(
+                        "Dynamic registration is enabled but no registration "
+                        "endpoint was discovered, returning the original 401 "
+                        "response."
+                    )
+                    return response
+
+                log.debug(
+                    "Performing dynamic client registration at %s.",
+                    registration_endpoint,
+                )
+                try:
+                    client_id, client_secret = self.get_dynamic_client_credentials(
+                        registration_endpoint,
+                        client_name=self.dynamic_client_name,
+                    )
+                except requests.exceptions.RequestException as e:
+                    log.debug(
+                        "Dynamic client registration at %s failed (%s), "
+                        "returning the original 401 response.",
+                        registration_endpoint,
+                        e,
+                    )
+                    return response
+                except (ValueError, KeyError) as e:
+                    # Includes json.JSONDecodeError and missing `client_id`
+                    log.debug(
+                        "Dynamic client registration response from %s was "
+                        "invalid (%s), returning the original 401 response.",
+                        registration_endpoint,
+                        e,
+                    )
+                    return response
+
+                log.debug("Dynamically registered client_id %s.", client_id)
+                self.client_id = client_id
+
+            authorization_url, state = self.authorization_url(token_endpoint)
+
+            if isinstance(self._client, DeviceClient):
+                log.debug(
+                    "Device flow detected, polling %s for a token.", authorization_url
+                )
+                token = asyncio.run(self.token_from_device_code(authorization_url))
+            elif isinstance(self._client, MobileApplicationClient):
+                log.debug(
+                    "Implicit flow detected, requesting authorization at %s.",
+                    authorization_url,
+                )
+                print(f"Go to: {authorization_url}")
+                authorization_response = input(
+                    "Paste the full redirect URL you were sent to here: "
+                )
+                token = self.token_from_fragment(authorization_response)
+            else:
+                token = self.refresh_token(
+                    authorization_url, self._client.client_id, client_secret
+                )
+            if self.token_updater:
+                log.debug("Updating token to %s using %s.", token, self.token_updater)
+                self.token_updater(token)
+
+            log.debug("Re-adding token %s to request for %s.", self.token, url)
+            try:
+                url, headers, data = self._client.add_token(
+                    url, http_method=method, body=data, headers=headers
+                )
+            except TokenExpiredError as e:
+                log.debug(
+                    "Newly obtained token could not be applied to the request "
+                    "to %s (%s), returning the original 401 response.",
+                    url,
+                    e,
+                )
+                return response
+
+            log.debug("Retrying url %s using method %s.", url, method)
+            response = super(OAuth2Session, self).request(
+                method, url, headers=headers, data=data, files=files, **kwargs
+            )
+            log.debug(
+                "Retried request to %s completed with status %s.",
+                url,
+                response.status_code,
+            )
+        return response
+
+    @staticmethod
+    def _parse_resource_metadata_uri(response):
+        """Extract the `resource_metadata` uri from a 401 challenge header."""
+        www_auth_headers = response.headers.get("WWW-Authenticate").split(",")
+
+        for scheme in www_auth_headers:
+            # Properties split by spaces
+            for prop in scheme.split(" "):
+                if prop.startswith("resource_metadata="):
+                    # Extract the prop value from resource_metadata=resource_metadata_url
+                    return prop.split("=")[1]
+
+        return None # No resource metadata URI found
 
     def register_compliance_hook(self, hook_type, hook):
         """Register a hook for request/response tweaking.
