@@ -20,6 +20,15 @@ class TokenUpdated(Warning):
         super(TokenUpdated, self).__init__()
         self.token = token
 
+grant_type_classes = {
+    'authorization_code': WebApplicationClient,
+    'implicit': MobileApplicationClient,
+    'password': LegacyApplicationClient,
+    'urn:ietf:params:oauth:grant-type:jwt-bearer' : ServiceApplicationClient,
+    'client_credentials': BackendApplicationClient,
+    'urn:ietf:params:oauth:grant-type:device_code': DeviceClient,
+}
+
 
 class OAuth2Session(requests.Session):
     """Versatile OAuth 2 extension to :class:`requests.Session`.
@@ -43,6 +52,7 @@ class OAuth2Session(requests.Session):
         self,
         client_id=None,
         client=None,
+        grant_type='authorization_code',
         auto_refresh_url=None,
         auto_refresh_kwargs=None,
         scope=None,
@@ -59,6 +69,33 @@ class OAuth2Session(requests.Session):
         :param client: :class:`oauthlib.oauth2.Client` to be used. Default is
                        WebApplicationClient which is useful for any
                        hosted application but not mobile or desktop.
+        :param grant_type: OAuth 2 grant type identifier used instantiate
+                           the client type if not explicitly given.
+                           Possible values:
+                           ``"authorization_code"``
+                           (:class:`oauthlib.oauth2.WebApplicationClient`),
+                           ``"implicit"``
+                           (:class:`oauthlib.oauth2.MobileApplicationClient`),
+                           ``"password"``
+                           (:class:`oauthlib.oauth2.LegacyApplicationClient`),
+                           ``"client_credentials"``
+                           (:class:`oauthlib.oauth2.BackendApplicationClient`),
+                           ``"urn:ietf:params:oauth:grant-type:jwt-bearer"``
+                           (:class:`oauthlib.oauth2.ServiceApplicationClient`)
+                           and
+                           ``"urn:ietf:params:oauth:grant-type:device_code"``
+                           (:class:`oauthlib.oauth2.DeviceClient`). Defaults to
+                           ``"authorization_code"``; any unrecognized value
+                           falls back to
+                           :class:`oauthlib.oauth2.WebApplicationClient`.
+                           Ignored when ``client`` is given.
+        :param dynamic_registration_client_name: Human readable name of this
+                                         client, sent to the dynamic
+                                         registration endpoint so the
+                                         authorization server can identify and
+                                         display the registered client. Can be None,
+                                         though it is likely to be treated as an
+                                         anonymous client.
         :param scope: List of scopes you wish to request access to
         :param redirect_uri: Redirect URI you registered as callback
         :param token: Token dictionary, must include access_token
@@ -81,7 +118,14 @@ class OAuth2Session(requests.Session):
         :param kwargs: Arguments to pass to the Session constructor.
         """
         super(OAuth2Session, self).__init__(**kwargs)
-        self._client = client or WebApplicationClient(client_id, token=token)
+        if client is None:
+            client_class_to_initialize = grant_type_classes.get(grant_type)
+            if client_class_to_initialize is None:
+                raise ValueError("Grant type %s not supported", grant_type)
+            self._client = client_class_to_initialize(client_id, token=token)
+        else:
+            self._client = client
+        self.dynamic_client_name = dynamic_client_name
         self.token = token or {}
         self._scope = scope
         self.redirect_uri = redirect_uri
