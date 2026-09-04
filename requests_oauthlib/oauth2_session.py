@@ -52,6 +52,7 @@ class OAuth2Session(requests.Session):
         self,
         client_id=None,
         client=None,
+        dynamic_client_name=None,
         grant_type='authorization_code',
         auto_refresh_url=None,
         auto_refresh_kwargs=None,
@@ -668,6 +669,7 @@ class OAuth2Session(requests.Session):
         client_id=None,
         client_secret=None,
         files=None,
+        perform_dynamic_registration=True,
         **kwargs
     ):
         """
@@ -973,3 +975,53 @@ class OAuth2Session(requests.Session):
                 "Hook type %s is not in %s.", hook_type, self.compliance_hook
             )
         self.compliance_hook[hook_type].add(hook)
+
+
+    def get_dynamic_client_credentials(self, registration_endpoint, grant_types=None, client_name=None):
+        """
+        Obtains a new set of client credentials using dynamic registration as per RFC7591.
+
+        :param registration_endpoint: Client registration endpoint URL of the
+                                      authorization server, must use HTTPS.
+        :param grant_types: Optional list of grant types the registered client
+                            intends to use. Defaults to an empty list, to which
+                            the grant type of the underlying client is appended
+                            when available.
+        :param client_name: Optional human readable name of this client, sent to
+                            the registration endpoint so the authorization
+                            server can identify and display the registered
+                            client. May be None, in which case the client is
+                            likely to be treated as anonymous.
+        :return: The client_id and client_secret returned by the registration endpoint.
+                The issued `client_id` is stored on this session.
+        """
+
+        if grant_types is None:
+            grant_types = []
+
+        if self.client_id is not None:
+            log.warning(f"Client ID being overwritten with requested credentials "
+                        f"from {registration_endpoint}")
+
+        if hasattr(self._client, "grant_type"):
+            # Can extract grant type from client
+            grant_types.append(getattr(self._client, "grant_type"))
+
+        scope = self.scope
+        if isinstance(scope, Collection) and not isinstance(scope, str):
+            scope = " ".join(str(s) for s in scope)
+
+        registration_params = {
+            "grant_types": list(grant_types),
+            "redirect_uris": [self.redirect_uri],
+            "client_name": client_name,
+            "scope": scope,
+        }
+
+        registration_response = super(OAuth2Session, self).request(
+            "POST", registration_endpoint, json=registration_params
+        )
+        registration_response.raise_for_status()
+        client_metadata = registration_response.json()
+
+        return client_metadata["client_id"], client_metadata.get("client_secret")
