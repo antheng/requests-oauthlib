@@ -89,6 +89,26 @@ class OAuth2Session(requests.Session):
                            falls back to
                            :class:`oauthlib.oauth2.WebApplicationClient`.
                            Ignored when ``client`` is given.
+        :param grant_type: OAuth 2 grant type identifier used instantiate
+                           the client type if not explicitly given.
+                           Possible values:
+                           ``"authorization_code"``
+                           (:class:`oauthlib.oauth2.WebApplicationClient`),
+                           ``"implicit"``
+                           (:class:`oauthlib.oauth2.MobileApplicationClient`),
+                           ``"password"``
+                           (:class:`oauthlib.oauth2.LegacyApplicationClient`),
+                           ``"client_credentials"``
+                           (:class:`oauthlib.oauth2.BackendApplicationClient`),
+                           ``"urn:ietf:params:oauth:grant-type:jwt-bearer"``
+                           (:class:`oauthlib.oauth2.ServiceApplicationClient`)
+                           and
+                           ``"urn:ietf:params:oauth:grant-type:device_code"``
+                           (:class:`oauthlib.oauth2.DeviceClient`). Defaults to
+                           ``"authorization_code"``; any unrecognized value
+                           falls back to
+                           :class:`oauthlib.oauth2.WebApplicationClient`.
+                           Ignored when ``client`` is given.
         :param dynamic_registration_client_name: Human readable name of this
                                          client, sent to the dynamic
                                          registration endpoint so the
