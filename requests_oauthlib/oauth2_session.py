@@ -59,6 +59,26 @@ class OAuth2Session(requests.Session):
         :param client: :class:`oauthlib.oauth2.Client` to be used. Default is
                        WebApplicationClient which is useful for any
                        hosted application but not mobile or desktop.
+        :param grant_type: OAuth 2 grant type identifier used instantiate
+                           the client type if not explicitly given.
+                           Possible values:
+                           ``"authorization_code"``
+                           (:class:`oauthlib.oauth2.WebApplicationClient`),
+                           ``"implicit"``
+                           (:class:`oauthlib.oauth2.MobileApplicationClient`),
+                           ``"password"``
+                           (:class:`oauthlib.oauth2.LegacyApplicationClient`),
+                           ``"client_credentials"``
+                           (:class:`oauthlib.oauth2.BackendApplicationClient`),
+                           ``"urn:ietf:params:oauth:grant-type:jwt-bearer"``
+                           (:class:`oauthlib.oauth2.ServiceApplicationClient`)
+                           and
+                           ``"urn:ietf:params:oauth:grant-type:device_code"``
+                           (:class:`oauthlib.oauth2.DeviceClient`). Defaults to
+                           ``"authorization_code"``; any unrecognized value
+                           falls back to
+                           :class:`oauthlib.oauth2.WebApplicationClient`.
+                           Ignored when ``client`` is given.
         :param scope: List of scopes you wish to request access to
         :param redirect_uri: Redirect URI you registered as callback
         :param token: Token dictionary, must include access_token
@@ -81,7 +101,14 @@ class OAuth2Session(requests.Session):
         :param kwargs: Arguments to pass to the Session constructor.
         """
         super(OAuth2Session, self).__init__(**kwargs)
-        self._client = client or WebApplicationClient(client_id, token=token)
+        if client is None:
+            client_class_to_initialize = grant_type_classes.get(grant_type)
+            if client_class_to_initialize is None:
+                raise ValueError("Grant type %s not supported", grant_type)
+            self._client = client_class_to_initialize(client_id, token=token)
+        else:
+            self._client = client
+        self.dynamic_client_name = dynamic_client_name
         self.token = token or {}
         self._scope = scope
         self.redirect_uri = redirect_uri
