@@ -110,13 +110,6 @@ class OAuth2Session(requests.Session):
                            falls back to
                            :class:`oauthlib.oauth2.WebApplicationClient`.
                            Ignored when ``client`` is given.
-        :param dynamic_registration_client_name: Human readable name of this
-                                         client, sent to the dynamic
-                                         registration endpoint so the
-                                         authorization server can identify and
-                                         display the registered client. Can be None,
-                                         though it is likely to be treated as an
-                                         anonymous client.
         :param scope: List of scopes you wish to request access to
         :param redirect_uri: Redirect URI you registered as callback
         :param token: Token dictionary, must include access_token
@@ -146,7 +139,6 @@ class OAuth2Session(requests.Session):
             self._client = client_class_to_initialize(client_id, token=token)
         else:
             self._client = client
-        self.dynamic_client_name = dynamic_client_name
         self.token = token or {}
         self._scope = scope
         self.redirect_uri = redirect_uri
@@ -681,13 +673,6 @@ class OAuth2Session(requests.Session):
                              obtain a new token before retrying the request
                              once. Set to False to return the 401 response
                              as-is.
-        :param perform_dynamic_registration: If True (default), the session is allowed
-                                     to register itself at the registration
-                                     endpoint advertised by the discovered
-                                     authorization server, when new client
-                                     credentials are required during the 401
-                                     recovery flow. `perform_auth` must also
-                                     be True otherwise this does nothing.
         """
         if not is_secure_transport(url):
             raise InsecureTransportError()
@@ -792,11 +777,10 @@ class OAuth2Session(requests.Session):
             if as_servers is None:
                 log.debug(
                     "No authorization servers advertised in resource server metadata"
-                    " skipping dynamic registration"
+                    " skipping token retrieval"
                 )
                 return response
 
-            registration_endpoint = None
             token_endpoint = None
             for as_base in as_servers: # Try each authorization server
                 try:
@@ -810,16 +794,15 @@ class OAuth2Session(requests.Session):
                     as_metadata_resp.raise_for_status()
                     as_metadata = as_metadata_resp.json()
 
-                    if "token_endpoint" not in as_metadata or "registration_endpoint" not in as_metadata:
+                    if "token_endpoint" not in as_metadata:
                         log.debug(
                             "Authorization server metadata at %s does not advertise "
-                            "both a token_endpoint and a registration_endpoint, "
+                            "a token_endpoint, "
                             "trying next authorization server.",
                             as_metadata_uri,
                         )
                         continue
                     else:
-                        registration_endpoint = as_metadata["registration_endpoint"]
                         token_endpoint = as_metadata["token_endpoint"]
                         break
                 except requests.exceptions.HTTPError as e:
@@ -850,48 +833,9 @@ class OAuth2Session(requests.Session):
             if token_endpoint is None:
                 log.debug(
                     "No authorization server advertised usable metadata, "
-                    "skipping dynamic registration."
+                    "skipping token retrieval."
                 )
                 return response
-
-            if perform_dynamic_registration:
-                if registration_endpoint is None:
-                    log.debug(
-                        "Dynamic registration is enabled but no registration "
-                        "endpoint was discovered, returning the original 401 "
-                        "response."
-                    )
-                    return response
-
-                log.debug(
-                    "Performing dynamic client registration at %s.",
-                    registration_endpoint,
-                )
-                try:
-                    client_id, client_secret = self.get_dynamic_client_credentials(
-                        registration_endpoint,
-                        client_name=self.dynamic_client_name,
-                    )
-                except requests.exceptions.RequestException as e:
-                    log.debug(
-                        "Dynamic client registration at %s failed (%s), "
-                        "returning the original 401 response.",
-                        registration_endpoint,
-                        e,
-                    )
-                    return response
-                except (ValueError, KeyError) as e:
-                    # Includes json.JSONDecodeError and missing `client_id`
-                    log.debug(
-                        "Dynamic client registration response from %s was "
-                        "invalid (%s), returning the original 401 response.",
-                        registration_endpoint,
-                        e,
-                    )
-                    return response
-
-                log.debug("Dynamically registered client_id %s.", client_id)
-                self.client_id = client_id
 
             authorization_url, state = self.authorization_url(token_endpoint)
 
@@ -899,7 +843,7 @@ class OAuth2Session(requests.Session):
                 log.debug(
                     "Device flow detected, polling %s for a token.", authorization_url
                 )
-                token = asyncio.run(self.token_from_device_code(authorization_url))
+                token = await self.token_from_device_code(authorization_url)
             elif isinstance(self._client, MobileApplicationClient):
                 log.debug(
                     "Implicit flow detected, requesting authorization at %s.",
