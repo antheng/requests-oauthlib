@@ -841,7 +841,7 @@ class OAuth2Session(requests.Session):
                 log.debug(
                     "Device flow detected, polling %s for a token.", authorization_url
                 )
-                token = asyncio.run(self.token_from_device_code(authorization_url))
+                token = await self.token_from_device_code(authorization_url)
             elif isinstance(self._client, MobileApplicationClient):
                 log.debug(
                     "Implicit flow detected, requesting authorization at %s.",
