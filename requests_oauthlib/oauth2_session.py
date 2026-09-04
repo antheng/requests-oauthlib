@@ -1,4 +1,3 @@
-import asyncio
 import logging
 import time
 from collections.abc import Collection
@@ -483,7 +482,7 @@ class OAuth2Session(requests.Session):
         self.token = self._client.token
         return self.token
 
-    async def token_from_device_code(
+    def token_from_device_code(
          self,
          token_endpoint,
          client_id=None,
@@ -843,7 +842,7 @@ class OAuth2Session(requests.Session):
                 log.debug(
                     "Device flow detected, polling %s for a token.", authorization_url
                 )
-                token = await self.token_from_device_code(authorization_url)
+                token = self.token_from_device_code(authorization_url)
             elif isinstance(self._client, MobileApplicationClient):
                 log.debug(
                     "Implicit flow detected, requesting authorization at %s.",
