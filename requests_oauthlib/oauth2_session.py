@@ -869,7 +869,11 @@ class OAuth2Session(requests.Session):
                 log.debug(
                     "Device flow detected, polling %s for a token.", authorization_url
                 )
-                token = self.token_from_device_code(authorization_url)
+                token = self.token_from_device_code(
+                    authorization_url,
+                    client_id=client_id,
+                    client_secret=client_secret
+                )
             elif isinstance(self._client, MobileApplicationClient):
                 log.debug(
                     "Implicit flow detected, requesting authorization at %s.",
@@ -882,7 +886,8 @@ class OAuth2Session(requests.Session):
                 token = self.token_from_fragment(authorization_response)
             else:
                 token = self.refresh_token(
-                    authorization_url, self._client.client_id, client_secret
+                    authorization_url,
+                    auth=(self._client.client_id, client_secret)
                 )
             if self.token_updater:
                 log.debug("Updating token to %s using %s.", token, self.token_updater)
