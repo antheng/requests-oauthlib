@@ -989,5 +989,5 @@ class OAuth2Session(requests.Session):
         )
         registration_response.raise_for_status()
         client_metadata = registration_response.json()
-
+        self.client_id = client_metadata["client_id"]
         return client_metadata["client_id"], client_metadata.get("client_secret")
