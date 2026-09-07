@@ -128,9 +128,14 @@ class OAuth2Session(requests.Session):
                         has been refreshed. This warning will carry the token
                         in its token argument.
         :param pkce: Set "S256" or "plain" to enable PKCE. Default is disabled.
+        :param dynamic_client_name: Optional human readable client name sent to
+                                    the registration endpoint when client
+                                    credentials are obtained through dynamic
+                                    client registration (RFC7591).
         :param kwargs: Arguments to pass to the Session constructor.
         """
         super(OAuth2Session, self).__init__(**kwargs)
+        self.dynamic_client_name = dynamic_client_name
         if client is None:
             client_class_to_initialize = grant_type_classes.get(grant_type)
             if client_class_to_initialize is None:
@@ -147,6 +152,7 @@ class OAuth2Session(requests.Session):
         self.auto_refresh_kwargs = auto_refresh_kwargs or {}
         self.token_updater = token_updater
         self._pkce = pkce
+        self.grant_type = grant_type
 
         if self._pkce not in ["S256", "plain", None]:
             raise AttributeError("Wrong value for {}(.., pkce={})".format(self.__class__, self._pkce))
@@ -672,9 +678,14 @@ class OAuth2Session(requests.Session):
                              obtain a new token before retrying the request
                              once. Set to False to return the 401 response
                              as-is.
+        :param perform_dynamic_registration: If True (default) and client
+                             credentials are missing, the session will attempt
+                             to obtain them through dynamic client registration
+                             (RFC7591) before performing the request.
         """
         if not is_secure_transport(url):
             raise InsecureTransportError()
+
         if self.token and not withhold_token:
             log.debug(
                 "Invoking %d protected resource request hooks.",
@@ -835,6 +846,22 @@ class OAuth2Session(requests.Session):
                     "skipping token retrieval."
                 )
                 return response
+
+            # Perform dynamic registration if required
+            if (
+                perform_auth
+                and perform_dynamic_registration
+                and (client_id is None or client_secret is None)
+            ):
+                log.debug(
+                    "Incomplete client credentials for %s, attempting dynamic "
+                    "client registration.",
+                    as_metadata["registration_endpoint"],
+                )
+                client_id, client_secret = self.get_dynamic_client_credentials(
+                    as_metadata["registration_endpoint"], client_name=self.dynamic_client_name
+                )
+
 
             authorization_url, state = self.authorization_url(token_endpoint)
 
