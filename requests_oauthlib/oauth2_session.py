@@ -846,7 +846,9 @@ class OAuth2Session(requests.Session):
                     "skipping token retrieval."
                 )
                 return response
-
+            if self.scope is None and "scopes_supported" in as_metadata:
+                # Set scopes from auth if none currently present
+                self.scope = as_metadata["scopes_supported"]
             # Perform dynamic registration if required
             if perform_dynamic_registration:
                 client_id, client_secret = self.get_dynamic_client_credentials(
