@@ -8,6 +8,7 @@ from oauthlib.oauth2 import WebApplicationClient, InsecureTransportError, Mobile
 from oauthlib.oauth2 import LegacyApplicationClient
 from oauthlib.oauth2 import TokenExpiredError, is_secure_transport
 from oauthlib.oauth2.rfc6749.errors import CustomOAuth2Error
+import keyring
 
 import requests
 
@@ -50,6 +51,8 @@ class OAuth2Session(requests.Session):
     def __init__(
         self,
         client_id=None,
+        client_secret=None,
+        keyring_service_name=None,
         client=None,
         dynamic_client_name=None,
         grant_type='authorization_code',
@@ -66,6 +69,9 @@ class OAuth2Session(requests.Session):
         """Construct a new OAuth 2 client session.
 
         :param client_id: Client id obtained during registration
+        :param client_secret: Client secret for client_id. Will be stored in
+                              keyring. client_id and keyring_app_name must not
+                              be None.
         :param client: :class:`oauthlib.oauth2.Client` to be used. Default is
                        WebApplicationClient which is useful for any
                        hosted application but not mobile or desktop.
@@ -143,6 +149,20 @@ class OAuth2Session(requests.Session):
             self._client = client_class_to_initialize(client_id, token=token)
         else:
             self._client = client
+        self.keyring_service_name = keyring_service_name
+        if client_secret is not None:
+            if client_id is None or keyring_service_name is None:
+                raise ValueError(
+                    "Both `client_id` and `keyring_service_name` must be given "
+                    "when `client_secret` is supplied."
+                )
+            log.debug(
+                "Storing client secret for client id %s in keyring service %s.",
+                client_id,
+                keyring_service_name,
+            )
+            self.client_secret = client_secret
+
         self.token = token or {}
         self._scope = scope
         self.redirect_uri = redirect_uri
@@ -206,6 +226,71 @@ class OAuth2Session(requests.Session):
     @client_id.deleter
     def client_id(self):
         del self._client.client_id
+
+    @property
+    def client_id(self):
+        return getattr(self._client, "client_id", None)
+
+    @client_id.setter
+    def client_id(self, value):
+        self._client.client_id = value
+
+    @client_id.deleter
+    def client_id(self):
+        del self._client.client_id
+
+    @property
+    def client_secret(self):
+        """Client secret for the current ``client_id``.
+
+        The secret is never held on the session itself, it is looked up in the
+        keyring using ``keyring_service_name`` as the service and ``client_id``
+        as the username. Returns ``None`` if no keyring service name / client id
+        is configured or if no secret has been stored yet.
+        """
+        service_name = getattr(self, "keyring_service_name", None)
+        client_id = self.client_id
+        if not service_name or not client_id:
+            log.debug(
+                "No keyring service name or client id set, unable to look up "
+                "the client secret."
+            )
+            return None
+        return keyring.get_password(service_name, client_id)
+
+    @client_secret.setter
+    def client_secret(self, value):
+        service_name = getattr(self, "keyring_service_name", None)
+        client_id = self.client_id
+        if not service_name or not client_id:
+            raise ValueError(
+                "Both `client_id` and `keyring_service_name` must be set "
+                "before storing a `client_secret`."
+            )
+        if value is None:
+            del self.client_secret
+            return
+        log.debug(
+            "Storing client secret for client id %s in keyring service %s.",
+            client_id,
+            service_name,
+        )
+        keyring.set_password(service_name, client_id, value)
+
+    @client_secret.deleter
+    def client_secret(self):
+        service_name = getattr(self, "keyring_service_name", None)
+        client_id = self.client_id
+        if not service_name or not client_id:
+            return
+        try:
+            keyring.delete_password(service_name, client_id)
+        except keyring.errors.PasswordDeleteError:
+            log.debug(
+                "No client secret stored for client id %s in keyring service %s.",
+                client_id,
+                service_name,
+            )
 
     @property
     def token(self):
@@ -513,6 +598,8 @@ class OAuth2Session(requests.Session):
         """
         if client_id is None:
             client_id = self.client_id
+        if client_secret is None and self.keyring_service_name is not None:
+            client_secret = self.client_secret
         device_code_response = self.request(
             "GET",
             token_endpoint,
@@ -849,12 +936,15 @@ class OAuth2Session(requests.Session):
             if self.scope is None and "scopes_supported" in as_metadata:
                 # Set scopes from auth if none currently present
                 self.scope = as_metadata["scopes_supported"]
+
             # Perform dynamic registration if required
-            if perform_dynamic_registration:
+            if perform_dynamic_registration and client_id is None and client_secret is None:
                 client_id, client_secret = self.get_dynamic_client_credentials(
                     as_metadata["registration_endpoint"], client_name=self.dynamic_client_name
                 )
-
+                # Set new credentials
+                self.client_id = client_id
+                self.client_secret = client_secret
 
             authorization_url, state = self.authorization_url(token_endpoint)
 
@@ -882,6 +972,9 @@ class OAuth2Session(requests.Session):
                     authorization_url,
                     auth=(self._client.client_id, client_secret)
                 )
+
+                
+                
             if self.token_updater:
                 log.debug("Updating token to %s using %s.", token, self.token_updater)
                 self.token_updater(token)
@@ -991,5 +1084,4 @@ class OAuth2Session(requests.Session):
         )
         registration_response.raise_for_status()
         client_metadata = registration_response.json()
-        self.client_id = client_metadata["client_id"]
         return client_metadata["client_id"], client_metadata.get("client_secret")
