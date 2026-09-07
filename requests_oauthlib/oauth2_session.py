@@ -848,16 +848,7 @@ class OAuth2Session(requests.Session):
                 return response
 
             # Perform dynamic registration if required
-            if (
-                perform_auth
-                and perform_dynamic_registration
-                and (client_id is None or client_secret is None)
-            ):
-                log.debug(
-                    "Incomplete client credentials for %s, attempting dynamic "
-                    "client registration.",
-                    as_metadata["registration_endpoint"],
-                )
+            if perform_dynamic_registration:
                 client_id, client_secret = self.get_dynamic_client_credentials(
                     as_metadata["registration_endpoint"], client_name=self.dynamic_client_name
                 )
