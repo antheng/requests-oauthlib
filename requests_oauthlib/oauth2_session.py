@@ -149,7 +149,11 @@ class OAuth2Session(requests.Session):
             self._client = client_class_to_initialize(client_id, token=token)
         else:
             self._client = client
-        self.keyring_service_name = keyring_service_name
+        if keyring_service_name is None:
+            self.keyring_service_name = keyring_service_name
+        elif redirect_uri is not None: # Attempt to use other parameters as the name
+            self.keyring_service_name = f"{redirect_uri} client"
+            
         if client_secret is not None:
             if client_id is None or keyring_service_name is None:
                 raise ValueError(
