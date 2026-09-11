@@ -423,7 +423,8 @@ class OAuth2Session(requests.Session):
         self.token = self._client.token
         return self.token
 
-    async def token_from_device_code(
+    # TODO: This should be async to make it not blocking
+    def token_from_device_code(
          self,
          token_endpoint,
          client_id=None,
@@ -435,6 +436,7 @@ class OAuth2Session(requests.Session):
         DeviceCodeClient. Will continuously loop and poll `token_endpoint` to
         check if the device code until the number of attempts are met or the
         access token is given.
+
 
         :param token_endpoint: Endpoint for retrieving the token code
         :param client_id: Client id to be used for token retrieval.  If not
