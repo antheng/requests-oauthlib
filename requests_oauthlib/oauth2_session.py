@@ -153,7 +153,7 @@ class OAuth2Session(requests.Session):
             self.keyring_service_name = keyring_service_name
         elif redirect_uri is not None: # Attempt to use other parameters as the name
             self.keyring_service_name = f"{redirect_uri} client"
-            
+
         if client_secret is not None:
             if client_id is None or keyring_service_name is None:
                 raise ValueError(
@@ -977,8 +977,8 @@ class OAuth2Session(requests.Session):
                     auth=(self._client.client_id, client_secret)
                 )
 
-                
-                
+
+
             if self.token_updater:
                 log.debug("Updating token to %s using %s.", token, self.token_updater)
                 self.token_updater(token)
