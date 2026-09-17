@@ -450,8 +450,7 @@ class OAuth2Session(requests.Session):
         """
         if client_id is None:
             client_id = self.client_id
-        device_code_response = self.request(
-            "GET",
+        device_code_response = self.post(
             token_endpoint,
             client_id=client_id,
             client_secret=client_secret,
@@ -496,7 +495,6 @@ class OAuth2Session(requests.Session):
                 log.debug("Polling token endpoint %s for device code.", token_endpoint)
                 token = self.fetch_token(
                     token_endpoint,
-                    method="GET",
                     device_code=device_code,
                     include_client_id=True,
                     client_id=client_id,

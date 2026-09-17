@@ -1,4 +1,3 @@
-import asyncio
 import json
 import time
 import tempfile
@@ -549,13 +548,17 @@ class OAuth2SessionTest(TestCase):
         sess.fetch_token = mock.Mock(return_value=self.token)
         sess.request = mock.Mock(return_value=fake_device_code_response(15))
         with mock.patch("requests_oauthlib.oauth2_session.time.sleep"):
-            asyncio.run(sess.token_from_device_code(self.token_endpoint))
+            sess.token_from_device_code(self.token_endpoint)
             sess.request.assert_called_once_with(
-                "GET", self.token_endpoint, client_id=self.client_id, client_secret=None
+                "POST",
+                self.token_endpoint,
+                data=None,
+                json=None,
+                client_id=self.client_id,
+                client_secret=None,
             )
             sess.fetch_token.assert_called_once_with(
                 self.token_endpoint,
-                method="GET",
                 device_code="devicecode123",
                 include_client_id=True,
                 scope=sess.scope,
@@ -568,22 +571,21 @@ class OAuth2SessionTest(TestCase):
         sess.fetch_token = mock.Mock(return_value=self.token)
         sess.request = mock.Mock(return_value=fake_device_code_response(15))
         with mock.patch("requests_oauthlib.oauth2_session.time.sleep"):
-            asyncio.run(
-                sess.token_from_device_code(
-                    self.token_endpoint,
-                    client_id="explicit-id",
-                    client_secret="explicit-secret",
-                )
+            sess.token_from_device_code(
+                self.token_endpoint,
+                client_id="explicit-id",
+                client_secret="explicit-secret",
             )
             sess.request.assert_called_once_with(
-                "GET",
+                "POST",
                 self.token_endpoint,
+                data=None,
+                json=None,
                 client_id="explicit-id",
                 client_secret="explicit-secret",
             )
             sess.fetch_token.assert_called_once_with(
                 self.token_endpoint,
-                method="GET",
                 device_code="devicecode123",
                 include_client_id=True,
                 scope=sess.scope,
@@ -604,7 +606,7 @@ class OAuth2SessionTest(TestCase):
         # Interval will default to 5
         sess.request = mock.Mock(return_value=fake_device_code_response())
         with mock.patch("requests_oauthlib.oauth2_session.time.sleep") as mock_sleep:
-            result = asyncio.run(sess.token_from_device_code(self.token_endpoint))
+            result = sess.token_from_device_code(self.token_endpoint)
             self.assertEqual(result, self.token)
             self.assertEqual(sess.fetch_token.call_count, 2)
             # Interval remains the same between sleep calls
@@ -621,7 +623,7 @@ class OAuth2SessionTest(TestCase):
         # Interval will default to 5
         sess.request = mock.Mock(return_value=fake_device_code_response())
         with mock.patch("requests_oauthlib.oauth2_session.time.sleep") as mock_sleep:
-            result = asyncio.run(sess.token_from_device_code(self.token_endpoint))
+            result = sess.token_from_device_code(self.token_endpoint)
             self.assertEqual(result, self.token)
             self.assertEqual(sess.fetch_token.call_count, 2)
             # Interval increases between sleep calls as requested
@@ -637,7 +639,7 @@ class OAuth2SessionTest(TestCase):
         )
         with mock.patch("requests_oauthlib.oauth2_session.time.sleep"):
             with self.assertRaises(CustomOAuth2Error) as ctx:
-                asyncio.run(sess.token_from_device_code(self.token_endpoint))
+                sess.token_from_device_code(self.token_endpoint)
         self.assertEqual(ctx.exception.error, "other")
         sess.fetch_token.assert_called_once()
 
@@ -650,8 +652,8 @@ class OAuth2SessionTest(TestCase):
         with mock.patch("requests_oauthlib.oauth2_session.time.sleep"):
             self.assertRaises(
                 TimeoutError,
-                asyncio.run,
-                sess.token_from_device_code(self.token_endpoint),
+                sess.token_from_device_code,
+                self.token_endpoint,
             )
 
     def test_device_code_explicit_interval(self):
@@ -659,9 +661,7 @@ class OAuth2SessionTest(TestCase):
         sess.fetch_token = mock.Mock(return_value=self.token)
         sess.request = mock.Mock(return_value=fake_device_code_response(15))
         with mock.patch("requests_oauthlib.oauth2_session.time.sleep") as mock_sleep:
-            asyncio.run(
-                sess.token_from_device_code(self.token_endpoint, interval=1)
-            )
+            sess.token_from_device_code(self.token_endpoint, interval=1)
             mock_sleep.assert_called_once_with(1)
 
     def test_device_code_default_interval(self):
@@ -669,7 +669,7 @@ class OAuth2SessionTest(TestCase):
         sess.fetch_token = mock.Mock(return_value=self.token)
         sess.request = mock.Mock(return_value=fake_device_code_response())
         with mock.patch("requests_oauthlib.oauth2_session.time.sleep") as mock_sleep:
-            asyncio.run(sess.token_from_device_code(self.token_endpoint))
+            sess.token_from_device_code(self.token_endpoint)
             mock_sleep.assert_called_once_with(5)
 
     def test_device_code_http_error_raised(self):
@@ -679,7 +679,7 @@ class OAuth2SessionTest(TestCase):
         )
         with mock.patch("requests_oauthlib.oauth2_session.time.sleep"):
             self.assertRaises(
-                requests.HTTPError, asyncio.run, sess.token_from_device_code(self.token_endpoint)
+                requests.HTTPError, sess.token_from_device_code, self.token_endpoint
             )
 
 
