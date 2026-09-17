@@ -549,14 +549,12 @@ class OAuth2SessionTest(TestCase):
         sess.request = mock.Mock(return_value=fake_device_code_response(15))
         with mock.patch("requests_oauthlib.oauth2_session.time.sleep"):
             sess.token_from_device_code(self.token_endpoint)
-            sess.request.assert_called_once_with(
-                "POST",
-                self.token_endpoint,
-                data=None,
-                json=None,
-                client_id=self.client_id,
-                client_secret=None,
-            )
+            # Check the required authentication is used
+            basic_auth = sess.request.call_args.kwargs["auth"]
+            self.assertIsInstance(basic_auth, requests.auth.HTTPBasicAuth)
+            self.assertEqual(basic_auth.username, self.client_id)
+            self.assertIsNone(basic_auth.password)
+            # Ensure thefetch token endpoint is called correctly
             sess.fetch_token.assert_called_once_with(
                 self.token_endpoint,
                 device_code="devicecode123",
@@ -576,21 +574,18 @@ class OAuth2SessionTest(TestCase):
                 client_id="explicit-id",
                 client_secret="explicit-secret",
             )
-            sess.request.assert_called_once_with(
-                "POST",
-                self.token_endpoint,
-                data=None,
-                json=None,
-                client_id="explicit-id",
-                client_secret="explicit-secret",
-            )
+            basic_auth = sess.request.call_args.kwargs["auth"]
+            self.assertIsInstance(basic_auth, requests.auth.HTTPBasicAuth)
+            self.assertEqual(basic_auth.username, "explicit-id")
+            self.assertEqual(basic_auth.password, "explicit-secret")
+            # Ensure thefetch token endpoint is called correctly
             sess.fetch_token.assert_called_once_with(
                 self.token_endpoint,
                 device_code="devicecode123",
                 include_client_id=True,
                 scope=sess.scope,
                 client_id="explicit-id",
-                client_secret="explicit-secret",
+                client_secret="explicit-secret"
             )
 
     def test_device_code_authorization_pending_retries_then_succeeds(self):

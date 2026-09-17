@@ -450,13 +450,15 @@ class OAuth2Session(requests.Session):
         """
         if client_id is None:
             client_id = self.client_id
+
+        auth = requests.auth.HTTPBasicAuth(client_id, client_secret)
         device_code_response = self.post(
             token_endpoint,
-            client_id=client_id,
-            client_secret=client_secret,
+            auth=auth,
+            data={"scope": self.scope},
         )
         log.debug(
-            "Request questing device code from %s with client id %s",
+            "Request device code from %s with client id %s",
             token_endpoint,
             client_id
         )
