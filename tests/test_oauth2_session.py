@@ -76,6 +76,7 @@ class OAuth2SessionTest(TestCase):
         ]
         self.all_clients = self.clients + [self.client_MobileApplication]
         self.token_endpoint = "https://example.com/token"
+        self.device_authorization_endpoint = "https://example.com/device_authorization"
 
 
     def test_add_token(self):
@@ -548,7 +549,10 @@ class OAuth2SessionTest(TestCase):
         sess.fetch_token = mock.Mock(return_value=self.token)
         sess.request = mock.Mock(return_value=fake_device_code_response(15))
         with mock.patch("requests_oauthlib.oauth2_session.time.sleep"):
-            sess.token_from_device_code(self.token_endpoint)
+            sess.token_from_device_code(
+                self.device_authorization_endpoint,
+                self.token_endpoint,
+            )
             # Check the required authentication is used
             basic_auth = sess.request.call_args.kwargs["auth"]
             self.assertIsInstance(basic_auth, requests.auth.HTTPBasicAuth)
@@ -570,6 +574,7 @@ class OAuth2SessionTest(TestCase):
         sess.request = mock.Mock(return_value=fake_device_code_response(15))
         with mock.patch("requests_oauthlib.oauth2_session.time.sleep"):
             sess.token_from_device_code(
+                self.device_authorization_endpoint,
                 self.token_endpoint,
                 client_id="explicit-id",
                 client_secret="explicit-secret",
@@ -601,7 +606,10 @@ class OAuth2SessionTest(TestCase):
         # Interval will default to 5
         sess.request = mock.Mock(return_value=fake_device_code_response())
         with mock.patch("requests_oauthlib.oauth2_session.time.sleep") as mock_sleep:
-            result = sess.token_from_device_code(self.token_endpoint)
+            result = sess.token_from_device_code(
+                self.device_authorization_endpoint,
+                self.token_endpoint,
+            )
             self.assertEqual(result, self.token)
             self.assertEqual(sess.fetch_token.call_count, 2)
             # Interval remains the same between sleep calls
@@ -618,7 +626,10 @@ class OAuth2SessionTest(TestCase):
         # Interval will default to 5
         sess.request = mock.Mock(return_value=fake_device_code_response())
         with mock.patch("requests_oauthlib.oauth2_session.time.sleep") as mock_sleep:
-            result = sess.token_from_device_code(self.token_endpoint)
+            result = sess.token_from_device_code(
+                self.device_authorization_endpoint,
+                self.token_endpoint
+            )
             self.assertEqual(result, self.token)
             self.assertEqual(sess.fetch_token.call_count, 2)
             # Interval increases between sleep calls as requested
@@ -634,7 +645,10 @@ class OAuth2SessionTest(TestCase):
         )
         with mock.patch("requests_oauthlib.oauth2_session.time.sleep"):
             with self.assertRaises(CustomOAuth2Error) as ctx:
-                sess.token_from_device_code(self.token_endpoint)
+                sess.token_from_device_code(
+                    self.device_authorization_endpoint,
+                    self.token_endpoint,
+                )
         self.assertEqual(ctx.exception.error, "other")
         sess.fetch_token.assert_called_once()
 
@@ -648,6 +662,7 @@ class OAuth2SessionTest(TestCase):
             self.assertRaises(
                 TimeoutError,
                 sess.token_from_device_code,
+                self.device_authorization_endpoint,
                 self.token_endpoint,
             )
 
@@ -656,7 +671,11 @@ class OAuth2SessionTest(TestCase):
         sess.fetch_token = mock.Mock(return_value=self.token)
         sess.request = mock.Mock(return_value=fake_device_code_response(15))
         with mock.patch("requests_oauthlib.oauth2_session.time.sleep") as mock_sleep:
-            sess.token_from_device_code(self.token_endpoint, interval=1)
+            sess.token_from_device_code(
+                self.device_authorization_endpoint,
+                self.token_endpoint,
+                interval=1
+            )
             mock_sleep.assert_called_once_with(1)
 
     def test_device_code_default_interval(self):
@@ -664,7 +683,10 @@ class OAuth2SessionTest(TestCase):
         sess.fetch_token = mock.Mock(return_value=self.token)
         sess.request = mock.Mock(return_value=fake_device_code_response())
         with mock.patch("requests_oauthlib.oauth2_session.time.sleep") as mock_sleep:
-            sess.token_from_device_code(self.token_endpoint)
+            sess.token_from_device_code(
+                self.device_authorization_endpoint,
+                self.token_endpoint
+            )
             mock_sleep.assert_called_once_with(5)
 
     def test_device_code_http_error_raised(self):
@@ -674,7 +696,10 @@ class OAuth2SessionTest(TestCase):
         )
         with mock.patch("requests_oauthlib.oauth2_session.time.sleep"):
             self.assertRaises(
-                requests.HTTPError, sess.token_from_device_code, self.token_endpoint
+                requests.HTTPError,
+                sess.token_from_device_code,
+                self.device_authorization_endpoint,
+                self.token_endpoint
             )
 
 

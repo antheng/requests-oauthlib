@@ -426,6 +426,7 @@ class OAuth2Session(requests.Session):
     # TODO: This should be async to make it not blocking
     def token_from_device_code(
          self,
+         device_authorization_endpoint,
          token_endpoint,
          client_id=None,
          client_secret=None,
@@ -453,13 +454,13 @@ class OAuth2Session(requests.Session):
 
         auth = requests.auth.HTTPBasicAuth(client_id, client_secret)
         device_code_response = self.post(
-            token_endpoint,
+            device_authorization_endpoint,
             auth=auth,
             data={"scope": self.scope},
         )
         log.debug(
             "Request device code from %s with client id %s",
-            token_endpoint,
+            device_authorization_endpoint,
             client_id
         )
         try:
